@@ -81,14 +81,14 @@ def check_program_details():
         cur = c.cursor()
         if j==1:
             b=input("Enter Department Name: ")
-            cur.execute("select Venue_Name,Programs_On_Venue,Booked_Date from venuebooker where  Booking_Details= 'Booked' and Department_Name= %s;", (b,))
+            cur.execute("select Venue_Name,Programs_On_Venue,Booked_Date,program_time,instructions from venuebooker where  Booking_Details= 'Booked' and Department_Name= %s;", (b,))
             e=cur.fetchall()
             if e:
                 headers = [description[0] for description in cur.description]
                 print(tabulate(e, headers=headers, tablefmt="grid"))
                 c.commit()
         elif j==2:
-            cur.execute("select Venue_Name,Programs_On_Venue,Booked_Date from venuebooker where  Booking_Details= 'Booked';")
+            cur.execute("select Venue_Name,Programs_On_Venue,Booked_Date,program_time,instructions from venuebooker where  Booking_Details= 'Booked';")
             e=cur.fetchall()
             if e:
                 headers = [description[0] for description in cur.description]
