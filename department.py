@@ -27,7 +27,7 @@ def department_login():
         a="y"
         while a=="y":
             print("     --DEPARMENT--")
-            print(" 1 FOR VIEWING VENUE AVAILABLE \n 2 FOR VENUE BOOKING \n 3 FOR VIEW PROGRAMS ON VENUE \n 4 FOR CHANGING VENUE \n 5 FOR UPDATEING PARTICIPATION DETAILS \n")
+            print(" 1 FOR VIEWING VENUE AVAILABLE \n 2 FOR VENUE BOOKING \n 3 FOR VIEW PROGRAMS ON VENUE \n 4 FOR CHANGING VENUE \n 5 FOR UPDATEING PARTICIPATION DETAILS \n 6 FOR CANCELLING A BOOKING \n")
             ch7=int(input("Enter The Choice: "))
             if ch7==1:
                 view_available_venues()
@@ -39,153 +39,242 @@ def department_login():
                 change_venue(Departmentlogin)
             elif ch7==5:
                 update_participation_details()
+            elif ch7 == 6:
+                cancel_booking(Departmentlogin)
+
             a=input("Do You Want To Continue In Doing Opertaions In Department (y/n)?" )
     else:
         print("Invalid Department Username or Password.")
 
 def view_available_venues():
+    """Displays all venues that are free on a given date."""
     try:
         cur = c.cursor()
-        cur.execute("select Venue_Name,Number_Of_Seats from venuebooker where  Booking_Details= 'Available';")
-        e=cur.fetchall()
-        if e:
-            headers = [description[0] for description in cur.description]
-            print(tabulate(e, headers=headers, tablefmt="grid"))
-        c.commit()
+        date_input = input("Enter the date to check availability (YYYY-MM-DD): ").strip()
+        try:
+            check_date = datetime.strptime(date_input, "%Y-%m-%d").date()
+        except ValueError:
+            print("Invalid date format. Use YYYY-MM-DD.")
+            return
+        try:
+            required_seats = int(input("Enter minimum number of seats required (or 0 to skip): "))
+        except ValueError:
+            print(" Invalid seat number.")
+            return
+        if required_seats > 0:
+            cur.execute("""
+                SELECT v.Venue_Name, v.Number_Of_Seats
+                FROM venuebooker v
+                WHERE v.Venue_Name NOT IN (
+                    SELECT venue_name FROM venue_bookings WHERE booked_date = %s
+                )
+                AND v.Number_Of_Seats >= %s
+                ORDER BY v.Number_Of_Seats DESC;
+            """, (check_date, required_seats))
+        else:
+            cur.execute("""
+                SELECT v.Venue_Name, v.Number_Of_Seats
+                FROM venuebooker v
+                WHERE v.Venue_Name NOT IN (
+                    SELECT venue_name FROM venue_bookings WHERE booked_date = %s
+                )
+                ORDER BY v.Number_Of_Seats DESC;
+            """, (check_date,))
+
+        rows = cur.fetchall()
+        if rows:
+            headers = [desc[0] for desc in cur.description]
+            print(tabulate(rows, headers=headers, tablefmt="grid"))
+        else:
+            print(" No available venues found for that date.")
+
     except pq.Error as err:
-        print(f"Error: {err}")
+        print(f"Database Error: {err}")
         c.rollback()
     finally:
-        if 'cur' in locals() and cur is not None:
-            cur.close()
+        cur.close()
+
+
             
 def book_venue(Departmentlogin):
     try:
-        cur=c.cursor()
-        no_seats=int(input("Enter The Number Of Seats That You Need: "))
-        cur.execute("select Venue_Name,Number_Of_Seats from venuebooker where  Booking_Details= 'Available' and Number_Of_Seats >=%s;", (no_seats,))
-        e=cur.fetchall()
-        if e:
-            headers = [description[0] for description in cur.description]
-            print(tabulate(e, headers=headers, tablefmt="grid"))
+        cur = c.cursor()
+        curdate = datetime.now().date()
+        mindate = curdate + timedelta(days=14)
+        booking_date_input = input('Enter the date you want to book (YYYY-MM-DD): ')
+        try:
+            booking_date = datetime.strptime(booking_date_input, '%Y-%m-%d').date()
+        except ValueError:
+            print("Invalid date format. Please use YYYY-MM-DD.")
+            return
+        if not (curdate < booking_date <= mindate):
+            print("You can only book for dates from tomorrow up to 14 days ahead.")
+            return
+        try:
+            required_seats = int(input("Enter the number of seats you need: "))
+            if required_seats <= 0:
+                print("Number of seats must be positive.")
+                return
+        except ValueError:
+            print("Invalid number entered.")
+            return
+        cur.execute("""
+            SELECT v.Venue_Name, v.Number_Of_Seats
+            FROM venuebooker v
+            WHERE v.Number_Of_Seats >= %s
+            AND v.Venue_Name NOT IN (
+                SELECT venue_name FROM venue_bookings WHERE booked_date = %s
+            )
+            ORDER BY v.Venue_Name;
+        """, (required_seats, booking_date))
+        available_venues = cur.fetchall()
+
+        if not available_venues:
+            print("No venues available on that date with enough seats.")
+            return
+        headers = [description[0] for description in cur.description]
+        print("\nVenues available on", booking_date_input, "with at least", required_seats, "seats:")
+        print(tabulate(available_venues, headers=headers, tablefmt="grid"))
+        venue_choice = input("\nEnter the Venue Name you want to book: ").strip()
+        valid_venues = [row[0] for row in available_venues]
+        if venue_choice not in valid_venues:
+            print("Invalid venue name or not available.")
+            return
+        dept_name = input("Enter your Department Name: ").strip()
+        program = input("Enter the Program Name: ").strip()
+        program_time = input("Enter the Program Time: ").strip()
+        instructions = input("Enter any Instructions or Rules (or press Enter to skip): ").strip()
+        cur.execute("""
+            INSERT INTO venue_bookings
+                (venue_name, booked_date, department_name, username, program_name, program_time, instructions)
+            VALUES (%s, %s, %s, %s, %s, %s, %s);
+        """, (venue_choice, booking_date, dept_name, Departmentlogin, program, program_time, instructions))
         c.commit()
-        
-        curdate=datetime.now().date()
-        mindate=curdate+timedelta(days=14)
-        r=input('Enter The Date for which you want to book:("YYYY-MM-DD"): ')
-        j=datetime.strptime(r, '%Y-%m-%d').date()
-        if curdate < j <=mindate:
-            print("You Could Only Book The Venue Available \n")
-            l=input("Enter The Venuename: ")
-            p=input("Enter The Department Name: ")
-            h=input("Enter  Your Program Which Is Going TO Conducted On The Venue: ")
-            time=input('Enter The Time Of Program: ')
-            inst=input("Enter The Instructions Or Rules For The Program: ")
-            
-            g="Booked"
-            i="Available"
-            a="UPDATE  venuebooker SET  Booked_Date=%s where Venue_Name =%s and  Booking_Details=%s; "
-            z="UPDATE  venuebooker SET  Programs_On_Venue =%s where Venue_Name =%s and  Booking_Details=%s; "
-            y="UPDATE  venuebooker SET   Department_Name=%s where Venue_Name =%s and  Booking_Details=%s; "
-            o="UPDATE venuebooker SET Booking_Details=%s where Venue_Name =%s; "
-            b="UPDATE venuebooker SET  Username=%s where Venue_Name =%s; "
-            kp="UPDATE venuebooker SET  Program_Time=%s where Venue_Name =%s; "
-            ins="UPDATE  venuebooker SET Instructions=%s where Venue_Name =%s and  Booking_Details=%s; "
-            cur.execute(kp, (time, l))
-            cur.execute(ins, (inst, l, i))
-            cur.execute(b, (Departmentlogin, l))
-            cur.execute(a, (r, l, i))
-            cur.execute(z, (h, l, i))
-            cur.execute(y, (p, l, i))
-            cur.execute(o, (g, l))
-            c.commit()
-        else:
-            print("You Can Only Book Before 14 Days")
+
+        print(f"Venue '{venue_choice}' successfully booked for {booking_date_input}.")
+
     except pq.Error as err:
-        print(f"Error: {err}")
+        print(f"Database Error: {err}")
         c.rollback()
     finally:
         if 'cur' in locals() and cur is not None:
             cur.close()
 
+
 def view_booked_programs():
+    """Displays all programs that are currently booked on venues."""
     try:
         cur = c.cursor()
-        cur.execute("select  Venue_Name,Programs_On_Venue  from venuebooker where  Booking_Details= 'Booked';")
-        e=cur.fetchall()
-        if e:
-            headers = [description[0] for description in cur.description]
-            print(tabulate(e, headers=headers, tablefmt="grid"))
-        c.commit()
+        cur.execute("""
+            SELECT 
+                venue_name AS Venue,
+                program_name AS Program,
+                department_name AS Department,
+                booked_date AS Date,
+                program_time AS Time
+            FROM venue_bookings
+            WHERE booked_date >= CURRENT_DATE
+            ORDER BY booked_date;
+        """)
+        records = cur.fetchall()
+
+        if records:
+            headers = [desc[0] for desc in cur.description]
+            print(tabulate(records, headers=headers, tablefmt="grid"))
+        else:
+            print("No booked programs found.")
     except pq.Error as err:
         print(f"Error: {err}")
         c.rollback()
     finally:
-        if 'cur' in locals() and cur is not None:
-            cur.close()
+        cur.close()
+
 
 def change_venue(Departmentlogin):
     try:
-        cur=c.cursor()
-        no_seats=int(input("Enter The Number Of Seats That You Need: "))
-        cur.execute("select Venue_Name,Number_Of_Seats from venuebooker where  Booking_Details= 'Available' and Number_Of_Seats >=%s;", (no_seats,))
-        e=cur.fetchall()
-        if e:
-            headers = [description[0] for description in cur.description]
-            print(tabulate(e, headers=headers, tablefmt="grid"))
+        cur = c.cursor()
+        old_venue = input("Enter the venue name you have already booked: ").strip()
+        old_date_input = input("Enter the booked date (YYYY-MM-DD): ").strip()
+
+        try:
+            old_date = datetime.strptime(old_date_input, "%Y-%m-%d").date()
+        except ValueError:
+            print("Invalid old date format. Please use YYYY-MM-DD.")
+            return
+        cur.execute("""
+            SELECT booking_id FROM venue_bookings
+            WHERE venue_name = %s AND booked_date = %s AND username = %s;
+        """, (old_venue, old_date, Departmentlogin))
+        old_record = cur.fetchone()
+
+        if not old_record:
+            print("No matching booking found for you on that date.")
+            return
+        curdate = datetime.now().date()
+        mindate = curdate + timedelta(days=14)
+        new_date_input = input("Enter the new date for booking (YYYY-MM-DD): ").strip()
+        try:
+            new_date = datetime.strptime(new_date_input, "%Y-%m-%d").date()
+        except ValueError:
+            print("Invalid date format. Please use YYYY-MM-DD.")
+            return
+
+        if not (curdate < new_date <= mindate):
+            print("You can only book within 14 days from today.")
+            return
+        try:
+            required_seats = int(input("Enter the number of seats you need: "))
+            if required_seats <= 0:
+                print("Number of seats must be positive.")
+                return
+        except ValueError:
+            print("Invalid seat number.")
+            return
+        cur.execute("""
+            SELECT v.Venue_Name, v.Number_Of_Seats
+            FROM venuebooker v
+            WHERE v.Number_Of_Seats >= %s
+            AND v.Venue_Name NOT IN (
+                SELECT venue_name FROM venue_bookings WHERE booked_date = %s
+            )
+            ORDER BY v.Venue_Name;
+        """, (required_seats, new_date))
+        available_venues = cur.fetchall()
+        if not available_venues:
+            print("No venues available on that date with enough seats.")
+            return
+        headers = [description[0] for description in cur.description]
+        print(f"\nVenues available on {new_date_input} with at least {required_seats} seats:")
+        print(tabulate(available_venues, headers=headers, tablefmt="grid"))
+        new_venue = input("\nEnter the new venue name to book: ").strip()
+        valid_venues = [row[0] for row in available_venues]
+        if new_venue not in valid_venues:
+            print("Invalid or unavailable venue selected.")
+            return
+
+        dept_name = input("Enter your Department Name: ").strip()
+        program_name = input("Enter the Program Name: ").strip()
+        program_time = input("Enter the Program Time: ").strip()
+        instructions = input("Enter any Instructions or Rules (or press Enter to skip): ").strip()
+        cur.execute("DELETE FROM venue_bookings WHERE booking_id = %s;", (old_record[0],))
+        cur.execute("""
+            INSERT INTO venue_bookings
+                (venue_name, booked_date, department_name, username, program_name, program_time, instructions)
+            VALUES (%s, %s, %s, %s, %s, %s, %s);
+        """, (new_venue, new_date, dept_name, Departmentlogin, program_name, program_time, instructions))
         c.commit()
-        
-        curdate=datetime.now().date()
-        mindate=curdate+timedelta(days=14)
-        bookingdate=input('Enter The Date for which you want to book:("YYYY-MM-DD"): ')
-        j=datetime.strptime(bookingdate, '%Y-%m-%d').date()
-        
-        if curdate < j <=mindate:
-            venuename=input("Enter The Venuename That You Have ALready Booked: ")  
-            l=None
-            ak="Available"
-            de="UPDATE venuebooker SET Booking_Details=%s WHERE Venue_Name=%s and  Username=%s;"
-            b="UPDATE venuebooker SET Booked_Date=%s WHERE Venue_Name=%s and Username=%s;"
-            ef="UPDATE venuebooker SET Programs_On_Venue=%s WHERE Venue_Name=%s and Username=%s;"
-            f="UPDATE venuebooker SET Department_Name=%s WHERE Venue_Name=%s and Username=%s;"
-            ins="UPDATE venuebooker SET Instructions=%s where Venue_Name =%s;"
-            p="UPDATE venuebooker SET Username=%s WHERE Venue_Name=%s ;"
-            jk="UPDATE venuebooker SET Program_Time=%s WHERE Venue_Name=%s ;"
-            cur.execute(ins, (l, venuename))
-            cur.execute(de, (ak, venuename, Departmentlogin))
-            cur.execute(b, (l, venuename, Departmentlogin))
-            cur.execute(ef, (l, venuename, Departmentlogin))
-            cur.execute(f, (l, venuename, Departmentlogin))
-            cur.execute(p, (l, venuename))
-            cur.execute(jk, (l, venuename))
-            
-            newvenue=input("Enter The  New Venuename That You Need To Book: ")
-            departmentname=input("Enter The Department Name: ")
-            programname=input("Enter  Your Program Which Is Going TO Conducted On The Venue: ")
-            time=input('Enter The Time Of Program: ')
-            inst=input("Enter The Instructions Or Rules For The Program: ")
-            g="Booked"
-            ab="UPDATE  venuebooker SET  Booked_Date=%s where Venue_Name=%s and  Booking_Details=%s; "
-            z="UPDATE  venuebooker SET  Programs_On_Venue=%s where Venue_Name=%s and  Booking_Details=%s; "
-            y="UPDATE  venuebooker SET   Department_Name=%s where Venue_Name=%s and  Booking_Details=%s; "
-            ins="UPDATE  venuebooker SET   Instructions=%s where Venue_Name =%s and  Booking_Details=%s; "
-            o="UPDATE venuebooker SET Booking_Details=%s where Venue_Name=%s; "
-            bk="UPDATE venuebooker SET  Username=%s where Venue_Name=%s; "
-            kp="UPDATE venuebooker SET  Program_Time=%s where Venue_Name =%s; "
-            cur.execute(kp, (time, newvenue))
-            cur.execute(ins, (inst, newvenue, ak))
-            cur.execute(bk, (Departmentlogin, newvenue))
-            cur.execute(ab, (bookingdate, newvenue, ak))
-            cur.execute(z, (programname, newvenue, ak))
-            cur.execute(y, (departmentname, newvenue, ak))
-            cur.execute(o, (g, newvenue))
-            c.commit()
+
+        print(f" Booking changed successfully!")
+        print(f"Old booking: {old_venue} on {old_date_input}")
+        print(f"New booking: {new_venue} on {new_date_input}")
+
     except pq.Error as err:
-        print(f"Error: {err}")
+        print(f"Database Error: {err}")
         c.rollback()
     finally:
         if 'cur' in locals() and cur is not None:
             cur.close()
+
 
 def update_participation_details():
     try:
@@ -222,6 +311,39 @@ def department_register():
                 g="y"
     except pq.Error as err:
         print(f"Error: {err}")
+        c.rollback()
+    finally:
+        if 'cur' in locals() and cur is not None:
+            cur.close()
+def cancel_booking(Departmentlogin):
+    try:
+        cur = c.cursor()
+        venue_name = input("Enter the venue name to cancel: ").strip()
+        date_input = input("Enter the booked date (YYYY-MM-DD): ").strip()
+        try:
+            booking_date = datetime.strptime(date_input, "%Y-%m-%d").date()
+        except ValueError:
+            print("Invalid date format. Use YYYY-MM-DD.")
+            return
+        cur.execute("""
+            SELECT booking_id FROM venue_bookings
+            WHERE venue_name = %s AND booked_date = %s AND username = %s;
+        """, (venue_name, booking_date, Departmentlogin))
+        record = cur.fetchone()
+
+        if not record:
+            print("No matching booking found for you on that date.")
+            return
+        confirm = input(f"Are you sure you want to cancel booking for '{venue_name}' on {date_input}? (y/n): ").lower()
+        if confirm == "y":
+            cur.execute("DELETE FROM venue_bookings WHERE booking_id = %s;", (record[0],))
+            c.commit()
+            print(f"Booking for '{venue_name}' on {date_input} cancelled successfully.")
+        else:
+            print("Cancellation aborted.")
+
+    except pq.Error as err:
+        print(f"Database Error: {err}")
         c.rollback()
     finally:
         if 'cur' in locals() and cur is not None:

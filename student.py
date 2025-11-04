@@ -42,7 +42,14 @@ def student_login():
 def view_upcoming_programs():
     try:
         cur = c.cursor()
-        cur.execute("select Venue_Name,Programs_On_Venue,Booked_Date from venuebooker where Booking_Details= 'Booked' AND Booked_Date >= CURRENT_DATE;")
+        cur.execute("""
+    SELECT venue_name AS Venue, program_name AS Program,
+           booked_date AS Date, department_name AS Department
+    FROM venue_bookings
+    WHERE booked_date >= CURRENT_DATE
+    ORDER BY booked_date;
+""")
+
         e=cur.fetchall()
         if e:
             headers = [description[0] for description in cur.description]
@@ -61,7 +68,13 @@ def check_program_by_date():
     try:
         cur = c.cursor()
         date=input("Enter The Date That You Need Check Whether Program Is There Or Not (YYYY-MM-DD): ")
-        cur.execute("select Venue_Name,Programs_On_Venue,Booked_Date from venuebooker where  Booking_Details= 'Booked' and  Booked_Date = %s;", (date,))
+        cur.execute("""
+    SELECT venue_name AS Venue, program_name AS Program,
+           department_name AS Department, program_time AS Time
+    FROM venue_bookings
+    WHERE booked_date = %s;
+""", (date,))
+
         e=cur.fetchall()
         if e:
             headers = [description[0] for description in cur.description]
@@ -81,14 +94,24 @@ def check_program_details():
         cur = c.cursor()
         if j==1:
             b=input("Enter Department Name: ")
-            cur.execute("select Venue_Name,Programs_On_Venue,Booked_Date,program_time,instructions from venuebooker where  Booking_Details= 'Booked' and Department_Name= %s;", (b,))
+            cur.execute("""
+    SELECT venue_name AS Venue, program_name AS Program,
+           booked_date AS Date, program_time AS Time, instructions AS Instructions
+    FROM venue_bookings
+    WHERE department_name = %s;
+""", (b,))            
             e=cur.fetchall()
             if e:
                 headers = [description[0] for description in cur.description]
                 print(tabulate(e, headers=headers, tablefmt="grid"))
                 c.commit()
         elif j==2:
-            cur.execute("select Venue_Name,Programs_On_Venue,Booked_Date,program_time,instructions from venuebooker where  Booking_Details= 'Booked';")
+            cur.execute("""
+    SELECT venue_name AS Venue, program_name AS Program,
+           booked_date AS Date, program_time AS Time, instructions AS Instructions
+    FROM venue_bookings
+    ORDER BY booked_date;
+""")
             e=cur.fetchall()
             if e:
                 headers = [description[0] for description in cur.description]

@@ -37,7 +37,17 @@ try:
         Department_Name VARCHAR(255),
         Program_Name VARCHAR(255)
     );
-    """
+    CREATE TABLE IF NOT EXISTS venue_bookings (
+    booking_id SERIAL PRIMARY KEY,
+    venue_name VARCHAR(255) REFERENCES venuebooker(Venue_Name),
+    booked_date DATE NOT NULL,
+    department_name VARCHAR(255),
+    username VARCHAR(255),
+    program_name VARCHAR(255),
+    program_time VARCHAR(50),
+    instructions TEXT
+);
+"""
     
     commands = table_creation_commands.split(';')
     for command in commands:
@@ -45,9 +55,10 @@ try:
             cur.execute(command)
             
     c.commit()
-
-    d = "UPDATE venuebooker SET Booking_Details='Available',Booked_Date=NULL,Programs_On_Venue=NULL,Department_Name=NULL,Username=NULL,Instructions=NULL,Program_Time=NULL WHERE Booked_Date < CURRENT_DATE;"
-    cur.execute(d)
+    cur.execute("""
+    DELETE FROM venue_bookings
+    WHERE booked_date < CURRENT_DATE;
+""")
     c.commit()
 
 except pq.Error as err:
